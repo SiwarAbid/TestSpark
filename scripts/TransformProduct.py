@@ -1,6 +1,6 @@
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.functions import col, regexp_replace, when, abs
+from pyspark.sql.functions import col, regexp_replace, when, abs, regexp_extract
 
 
 # spark session creation
@@ -50,4 +50,25 @@ products_df = products_df.withColumn(
     "UnitsInStock", 
     when(col("UnitsInStock").isNull(), 0)                 # Remplacer NULL par 0
 )
-products_df.show()
+
+# QuantityPerUnit 
+
+# Expression régulière pour la quantité (premier nombre au début de la chaîne)
+quantity_regex = r"^(\d+)"  # Capture le premier nombre
+
+# Expression régulière pour la description (tout après la quantité)
+description_regex = r"^\d+\s(.+)$"  # Capture tout après le premier nombre
+
+# Extraire la quantité
+products_df = products_df.withColumn("Quantity", regexp_extract(col("QuantityPerUnit"), quantity_regex, 1))
+
+# Extraire la description (tout le reste)
+products_df = products_df.withColumn("Description", regexp_extract(col("QuantityPerUnit"), description_regex, 1))
+products_df = products_df.withColumn("Description", regexp_replace(col("Description"), "- ", ""))
+
+# Vérifier les résultats
+products_df.select("QuantityPerUnit", "Quantity", "Description").show(truncate=False)
+
+products_df.write.mode("overwrite").parquet("C:/TestProjectSpark/output/silver/products")
+
+# products_df.show()
