@@ -15,6 +15,7 @@ customers_df = spark.read.csv("data/raw/customers.csv", header=True, inferSchema
 employees_df = spark.read.csv("data/raw/employees.csv", header=True, inferSchema=True)
 categories_df = spark.read.csv("data/raw/categories.csv", header=True, inferSchema=True)
 suppliers_df = spark.read.csv("data/raw/suppliers.csv", header=True, inferSchema=True)
+tva_df = spark.read.csv("data/raw/tva_country.csv", header=True, inferSchema=True)
 
 
 # Sauvegarder les fichiers dans la couche Bronze
@@ -26,6 +27,7 @@ customers_df.write.mode("overwrite").parquet("C:/TestProjectSpark/output/bronze/
 employees_df.write.mode("overwrite").parquet("C:/TestProjectSpark/output/bronze/employees")
 categories_df.write.mode("overwrite").parquet("C:/TestProjectSpark/output/bronze/categories")
 suppliers_df.write.mode("overwrite").parquet("C:/TestProjectSpark/output/bronze/suppliers")
+tva_df.write.mode("overwrite").parquet("C:/TestProjectSpark/output/bronze/tva")
 
 
 # Afficher les colonnes pour vérifier la conversion

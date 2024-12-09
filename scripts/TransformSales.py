@@ -2,12 +2,66 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.functions import col, first, row_number, when, abs, expr
 from pyspark.sql.window import Window
+import logging
+import os
+
+# Configuration du système de logging
+# log_dir = "logs"
+# os.makedirs(log_dir, exist_ok=True)
+
+# logging.basicConfig(
+#     filename=os.path.join(log_dir, 'Sales-Silver.log'),
+#     level=logging.INFO,
+#     format='%(asctime)s - %(levelname)s - %(message)s'
+# )
+
+
+# Fonction pour enregistrer les transformations
+# def log_transformation(transformation_name, details, corrective_actions=None):
+#     try:
+#         logging.info(f"Transformation : {transformation_name}")
+#         logging.info(f"Détails : {details}")
+#         if corrective_actions:
+#             logging.info(f"Actions correctives : {corrective_actions}")
+#     except Exception as e:
+#         logging.error(f"Erreur lors de l'enregistrement des logs de transformation : {e}")
+
+# Fonction pour enregistrer les problèmes de qualité et les corrections
+# def log_quality_issues(issue_description, corrective_action):
+#     try:
+#         logging.warning(f"Problème de qualité : {issue_description}")
+#         logging.info(f"Correction apportée : {corrective_action}")
+#     except Exception as e:
+#         logging.error(f"Erreur lors du suivi des problèmes de qualité : {e}")
+
+# NOUVEAU LOG 
+# Configuration des logs
+log_filename = 'logs/TransformSales.log'
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s',
+                    handlers=[logging.FileHandler(log_filename),
+                              logging.StreamHandler()])
+
+# Fonction pour loguer les erreurs et les informations
+def log_data_quality(df_name, df):
+    # Vérification des valeurs nulles pour chaque colonne
+    for column in df.columns:
+        null_count = df.filter(col(column).isNull()).count()
+        if null_count > 0:
+            logging.warning(f"{df_name} - La colonne {column} a {null_count} valeurs nulles.")
+        else:
+            logging.info(f"{df_name} - La colonne {column} n'a pas de valeurs nulles.")
+    row_count = df.count()
+    logging.info(f"{df_name} - Nombre total de lignes : {row_count}")
+
 # spark session creation
 spark = SparkSession.builder \
     .appName("Data Warehouse BBT - nettoyage ") \
     .getOrCreate()
 
 print("Session Spark créée et prête.")
+
+logging.info("Transformation de la table Sales...")
 
 sales_df = spark.read.option("header", True).parquet("output/bronze/sales")
 #delete orderid0
@@ -57,8 +111,6 @@ sales_df = sales_df.withColumn("Freight", F.col("Freight").cast("float")) \
                    .withColumn("Discount", F.col("Discount").cast("float"))
 
 
-# Afficher les colonnes pour vérifier la conversion
-# sales_df.printSchema()
 # Nombre total de lignes dans le DataFrame
 total_rows = sales_df.count()
 
@@ -69,22 +121,6 @@ missing_percentage = sales_df.select(
         for c in sales_df.columns
     ]
 )
-
-# Afficher les pourcentages de valeurs manquantes pour chaque colonne
-# missing_percentage.show(truncate=False)
-
-
-# Remplissage ou suppression (exemple pour ShipRegion)
-# sales_df = sales_df.fillna({'ShipRegion': 'Unknown'})
-
-# from pyspark.sql.functions import col
-
-# Identifier les remises incohérentes (Discount hors de [0, 1] ou nulles)
-# invalid_discounts = sales_df.filter((col("Discount") < 0) | (col("Discount") > 1) | col("Discount").isNull())
-
-# Afficher les lignes avec des remises incohérentes
-# print("Incohérentes: ")
-# invalid_discounts.show()
 
 # Rendre les valeurs négatives de Discount positives et remplacer NULL par 0
 sales_df = sales_df.withColumn(
@@ -97,64 +133,16 @@ sales_df = sales_df.withColumn(
 # Ajouter une estimation pour les dates manquantes dans ShippedDate ( la date de commande + un délai moyen d'expédition )
 sales_df = sales_df.withColumn("ShippedDate", when(col("ShippedDate").isNull(), expr("date_add(OrderDate, 7)")).otherwise(col("ShippedDate")))
 
-
-# Analyser les données
-row_count = sales_df.count()
-distinct_count = sales_df.distinct().count()
-null_counts = {col: sales_df.filter(sales_df[col].isNull() | (sales_df[col] == "")).count() for col in sales_df.columns}
-
-# print(f"Nombre total de lignes : {row_count}")
-# print(f"Nombre de lignes uniques : {distinct_count}")
-# print("Nombre de valeurs NULL ou vides par colonne :")
-# for col, count in null_counts.items():
-#     print(f"  - {col}: {count}")
-
-# Vérifier les dates corrigées
-# sales_df.filter(col("ShippedDate").isNull()).show()
-
 # Remplacer les valeurs négatives par des valeurs positives et les NULLs par 0   ## Équation pour calculer le UnitPrice manquant ##
-# sales_df = sales_df.withColumn(
-#     "UnitPrice", 
-#     when(col("UnitPrice").isNull(), 0)                # Remplacer NULL par 0
-#     .otherwise(abs(col("UnitPrice")))                 # Convertir les négatifs en positifs
-# ).withColumn(
-#     "Quantity", 
-#     when(col("Quantity").isNull(), 0)                 # Remplacer NULL par 0
-#     .otherwise(abs(col("Quantity")))                  # Convertir les négatifs en positifs
-# )
-
-# # Identifier les valeurs aberrantes : UnitPrice <= 0 ou Quantity <= 0 ou NULL
-# outliers = sales_df.filter((col("UnitPrice") <= 0) | (col("Quantity") <= 0) | (col("Quantity").isNull()) | (col("UnitPrice").isNull()))
-
-# # Afficher les données aberrantes
-# outliers.show()
-
-# sales_df.show()
-# # Suppression des doublons exacts basés sur 'OrderID' en gardant la première occurrence
-# df_cleaned = sales_df.dropDuplicates(subset=['OrderID'])
-
-# # Vérification des doublons restants après suppression des doublons exacts
-# duplicates = df_cleaned.groupBy("OrderID").count().filter("count > 1")
-
-# # Affichage du résultat après nettoyage
-# duplicates.show()
-
-
-# Identifier et traiter les doublons non exacts
-# # Utiliser row_number pour identifier les doublons basés sur OrderID
-# window_spec = Window.partitionBy("OrderID").orderBy("OrderDate")
-
-# # Appliquer row_number pour chaque ligne dans chaque groupe de OrderID
-# df_with_row_number = sales_df.withColumn("row_num", row_number().over(window_spec))
-
-# # Remplir les valeurs manquantes par propagation des données disponibles
-# # Utilisation de first() pour remplir les valeurs manquantes dans les colonnes 'ShipAddress', 'ShipPostalCode', 'ShipCountry'
-# df_filled = df_with_row_number.withColumn("ShipAddress", first("ShipAddress", ignorenulls=True).over(window_spec)) \
-#                               .withColumn("ShipPostalCode", first("ShipPostalCode", ignorenulls=True).over(window_spec)) \
-#                               .withColumn("ShipCountry", first("ShipCountry", ignorenulls=True).over(window_spec))
-
-# # Modifier les OrderID en cas de doublons simultanés (si les commandes ont été passées en la même seconde)
-# df_final = df_filled.withColumn("NewOrderID", col("OrderID") + (col("row_num") - 1))
+sales_df = sales_df.withColumn(
+    "UnitPrice", 
+    when(col("UnitPrice").isNull(), 0)                # Remplacer NULL par 0
+    .otherwise(abs(col("UnitPrice")))                 # Convertir les négatifs en positifs
+).withColumn(
+    "Quantity", 
+    when(col("Quantity").isNull(), 0)                 # Remplacer NULL par 0
+    .otherwise(abs(col("Quantity")))                  # Convertir les négatifs en positifs
+)
 
 # Mapper les ShipCity en ShipRegion
 ShipCity_to_ShipRegion = {
@@ -195,17 +183,17 @@ ShipCity_to_ShipRegion = {
     'São Paulo': 'SP',                    # État de São Paulo, Brésil
     'Boston': 'MA',                       # Massachusetts, États-Unis
     'Stockholm': 'Stockholm County',      # Comté de Stockholm, Suède
-    'Salzburg': 'Salzburg',           # Région de Salzbourg, Autriche
-    'Århus': 'Midtjylland',           # Région du Jutland Central, Danemark
-    'Cunewalde': 'Saxony',            # Saxe, Allemagne
-    'Bern': 'BE',                     # Canton de Berne, Suisse
-    'Genève': 'GE',                   # Canton de Genève, Suisse
-    'Stavern': 'Vestfold og Telemark',# Norvège
-    'Versailles': 'IDF',              # Île-de-France, France
-    'Lille': 'Hauts-de-France',       # Hauts-de-France, France
-    'Luleå': 'Norrbotten',            # Comté de Norrbotten, Suède
-    'Nantes': 'Pays de la Loire',     # Pays de la Loire, France
-    'Brandenburg': 'BB',              # Brandebourg, Allemagne
+    'Salzburg': 'Salzburg',               # Région de Salzbourg, Autriche
+    'Århus': 'Midtjylland',               # Région du Jutland Central, Danemark
+    'Cunewalde': 'Saxony',                # Saxe, Allemagne
+    'Bern': 'BE',                         # Canton de Berne, Suisse
+    'Genève': 'GE',                       # Canton de Genève, Suisse
+    'Stavern': 'Vestfold og Telemark',    # Norvège
+    'Versailles': 'IDF',                  # Île-de-France, France
+    'Lille': 'Hauts-de-France',           # Hauts-de-France, France
+    'Luleå': 'Norrbotten',                # Comté de Norrbotten, Suède
+    'Nantes': 'Pays de la Loire',         # Pays de la Loire, France
+    'Brandenburg': 'BB',                  # Brandebourg, Allemagne
     'Marseille': 'Provence-Alpes-Côte d\'Azur', # PACA, France
     'Oulu': 'Northern Ostrobothnia',  # Ostrobotnie du Nord, Finlande
     'Bergamo': 'Lombardy',            # Lombardie, Italie
@@ -247,7 +235,7 @@ df_final = sales_df.withColumn("ShipRegion", ShipRegion_update)
 null_count = df_final.filter(col("ShipRegion").isNull()).count()
 
 # Afficher le résultat
-print(f"Nombre de valeurs nulles dans la colonne ShipRegion : {null_count}")
+# print(f"Nombre de valeurs nulles dans la colonne ShipRegion : {null_count}")
 
 # Extraire les villes uniques du DataFrame
 unique_cities_in_df = sales_df.select("ShipCity").distinct()
@@ -259,9 +247,9 @@ cities_in_dict = list(ShipCity_to_ShipRegion.keys())
 missing_cities = unique_cities_in_df.filter(~col("ShipCity").isin(cities_in_dict))
 
 # Afficher les villes manquantes
-missing_cities.show()
+# missing_cities.show()
 # Affichage du DataFrame nettoyé
-df_final.show()
+# df_final.show()
 df_final.write.mode("overwrite").parquet("C:/TestProjectSpark/output/silver/sales")
 
 spark.stop()
